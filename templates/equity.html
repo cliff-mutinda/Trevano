@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Equity Securities — NSE Viewer{% endblock %}
+
+{% block content %}
+
+<!-- ── Page Introduction ── -->
+<div class="page-intro">
+  <h1>Equity Securities</h1>
+  <p>Browse and filter all listed equity securities on the NSE with real-time pricing and trading information</p>
+</div>
+
+<!-- ── Toolbar ── -->
+<div class="section">
+  <div class="toolbar">
+    <input class="search-input" id="filterInput" type="text" placeholder="Filter by symbol or name…" />
+    <select class="select-input" id="intradayFilter">
+      <option value="">All Securities</option>
+      <option value="yes">Intraday Enabled</option>
+      <option value="no">Intraday Disabled</option>
+    </select>
+    <span class="result-count" id="resultCount"></span>
+  </div>
+
+  <!-- ── Data Table ── -->
+  <div class="card mt0">
+    <div class="table-wrap">
+      <table class="data-table" id="equityTable">
+        <thead>
+          <tr>
+            <th data-col="Symbol">Symbol ↕</th>
+            <th data-col="SecurityName">Company Name ↕</th>
+            <th data-col="LTP">LTP ↕</th>
+            <th data-col="ClosingPrice">Close ↕</th>
+            <th data-col="Change">Change % ↕</th>
+            <th data-col="BuyLowerLimit">Buy Low</th>
+            <th data-col="BuyUpperLimit">Buy High</th>
+            <th data-col="TickSize">Tick</th>
+            <th data-col="MarketLot">Lot</th>
+            <th>Intraday</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="10" class="loading-cell">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRows = [];
+let sortCol = null, sortAsc = true;
+
+(async () => {
+  try {
+    const data = await (await fetch("/api/securities")).json();
+    if (data.error) throw data.error;
+
+    allRows = data
+      .filter(s => s.Segment === "Equity")
+      .map(s => ({
+        ...s,
+        Change: s.ClosingPrice ? ((s.LTP - s.ClosingPrice) / s.ClosingPrice * 100) : 0
+      }));
+
+    render(allRows);
+    document.getElementById("filterInput").addEventListener("input", applyFilters);
+    document.getElementById("intradayFilter").addEventListener("change", applyFilters);
+    document.querySelectorAll("th[data-col]").forEach(th =>
+      th.addEventListener("click", () => sortBy(th.dataset.col)));
+  } catch(e) {
+    document.getElementById("tableBody").innerHTML =
+      `<tr><td colspan="10" class="error-cell">${e}</td></tr>`;
+  }
+})();
+
+function applyFilters() {
+  const q   = document.getElementById("filterInput").value.toLowerCase();
+  const intr = document.getElementById("intradayFilter").value;
+  const filtered = allRows.filter(s => {
+    const matchQ = s.Symbol.toLowerCase().includes(q) || s.SecurityName.toLowerCase().includes(q);
+    const matchI = intr === "" || (intr === "yes" ? s.AllowIntradayTrading : !s.AllowIntradayTrading);
+    return matchQ && matchI;
+  });
+  render(filtered);
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+  applyFilters();
+}
+
+function render(rows) {
+  if (sortCol) {
+    rows = [...rows].sort((a,b) => {
+      let va = a[sortCol], vb = b[sortCol];
+      if (typeof va === "string") va = va.toLowerCase();
+      if (typeof vb === "string") vb = vb.toLowerCase();
+      return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+    });
+  }
+  document.getElementById("resultCount").textContent = rows.length + " securities";
+  document.getElementById("tableBody").innerHTML = rows.map(s => {
+    const chg = s.Change.toFixed(2);
+    const cls = s.Change > 0 ? "up" : s.Change < 0 ? "dn" : "";
+    return `
+    <tr>
+      <td><span class="symbol-tag">${s.Symbol}</span></td>
+      <td class="name-cell">${s.SecurityName}</td>
+      <td class="num ${cls}">${s.LTP.toFixed(2)}</td>
+      <td class="num">${s.ClosingPrice.toFixed(2)}</td>
+      <td class="num ${cls}">${s.Change > 0 ? "+" : ""}${chg}%</td>
+      <td class="num">${s.BuyLowerLimit.toFixed(2)}</td>
+      <td class="num">${s.BuyUpperLimit.toFixed(2)}</td>
+      <td class="num">${s.TickSize}</td>
+      <td class="num">${s.MarketLot}</td>
+      <td>${s.AllowIntradayTrading ? '<span class="pill green">Yes</span>' : '<span class="pill grey">No</span>'}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="10" class="empty-cell">No results found.</td></tr>`;
+}
+</script>
+{% endblock %}

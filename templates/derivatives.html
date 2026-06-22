@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Derivatives — NSE Viewer{% endblock %}
+
+{% block content %}
+
+<!-- ── Page Introduction ── -->
+<div class="page-intro">
+  <h1>Derivatives</h1>
+  <p>Explore futures and derivatives contracts available on the NSE with up-to-date pricing</p>
+</div>
+
+<!-- ── Toolbar ── -->
+<div class="section">
+  <div class="toolbar">
+    <input class="search-input" id="filterInput" type="text" placeholder="Filter by symbol or name…" />
+    <select class="select-input" id="typeFilter">
+      <option value="">All Types</option>
+      <option value="STKFUT">Stock Futures</option>
+      <option value="IDXFUT">Index Futures</option>
+    </select>
+    <span class="result-count" id="resultCount"></span>
+  </div>
+
+  <!-- ── Data Table ── -->
+  <div class="card mt0">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Security Name</th>
+            <th>Type</th>
+            <th>LTP</th>
+            <th>Closing Price</th>
+            <th>Market Lot</th>
+            <th>Tick Size</th>
+            <th>Exchange ID</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="8" class="loading-cell">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRows = [];
+
+(async () => {
+  try {
+    const data = await (await fetch("/api/securities")).json();
+    if (data.error) throw data.error;
+    allRows = data.filter(s => s.Segment === "Derivatives");
+    render(allRows);
+    document.getElementById("filterInput").addEventListener("input", applyFilters);
+    document.getElementById("typeFilter").addEventListener("change", applyFilters);
+  } catch(e) {
+    document.getElementById("tableBody").innerHTML =
+      `<tr><td colspan="8" class="error-cell">${e}</td></tr>`;
+  }
+})();
+
+function applyFilters() {
+  const q    = document.getElementById("filterInput").value.toLowerCase();
+  const type = document.getElementById("typeFilter").value;
+  const filtered = allRows.filter(s =>
+    (s.Symbol.toLowerCase().includes(q) || s.SecurityName.toLowerCase().includes(q)) &&
+    (type === "" || s.InstrumentType === type)
+  );
+  render(filtered);
+}
+
+function render(rows) {
+  document.getElementById("resultCount").textContent = rows.length + " contracts";
+  const typeColor = { STKFUT: "#0066CC", IDXFUT: "#F57C00" };
+  document.getElementById("tableBody").innerHTML = rows.map(s => `
+    <tr>
+      <td><span class="symbol-tag">${s.Symbol}</span></td>
+      <td class="name-cell">${s.SecurityName}</td>
+      <td><span class="pill" style="background:${typeColor[s.InstrumentType]||'#ccc'};color:#fff">${s.InstrumentType}</span></td>
+      <td class="num">${s.LTP}</td>
+      <td class="num">${s.ClosingPrice}</td>
+      <td class="num">${s.MarketLot}</td>
+      <td class="num">${s.TickSize}</td>
+      <td class="num muted">${s.SecurityExchangeID}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="8" class="empty-cell">No results found.</td></tr>`;
+}
+</script>
+{% endblock %}

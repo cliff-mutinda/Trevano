@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — NSE Viewer{% endblock %}
+
+{% block content %}
+
+<!-- ── Page Introduction ── -->
+<div class="page-intro">
+  <h1>Dashboard</h1>
+  <p>Overview of Nairobi Securities Exchange market data across equity, derivatives, and debt segments</p>
+</div>
+
+<div class="section">
+  <!-- ── STAT CARDS ── -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card loading">
+      <div class="stat-label">Total Securities</div>
+      <div class="stat-value" id="statTotal">—</div>
+    </div>
+    <div class="stat-card loading">
+      <div class="stat-label">Intraday Enabled</div>
+      <div class="stat-value" id="statIntraday">—</div>
+    </div>
+    <div class="stat-card loading">
+      <div class="stat-label">Equity Securities</div>
+      <div class="stat-value" id="statEquity">—</div>
+    </div>
+    <div class="stat-card loading">
+      <div class="stat-label">Debt Instruments</div>
+      <div class="stat-value" id="statDebt">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SEGMENT BREAKDOWN + RECENT TABLE ── -->
+<div class="section two-col">
+  <!-- Segment breakdown -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Securities by Segment</h3>
+    </div>
+    <div class="card-body" id="segmentChart">
+      <div class="skeleton-lines"></div>
+    </div>
+  </div>
+
+  <!-- Recent -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Recent Activity</h3>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table" id="recentTable">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Security Name</th>
+            <th>Type</th>
+            <th>LTP</th>
+          </tr>
+        </thead>
+        <tbody id="recentBody">
+          <tr><td colspan="4" class="loading-cell">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  try {
+    const data = await (await fetch("/api/securities")).json();
+    if (data.error) throw data.error;
+
+    // Update stats
+    const equity = data.filter(s => s.Segment === "Equity");
+    const intraday = data.filter(s => s.AllowIntradayTrading).length;
+    const debt = data.filter(s => s.Segment === "Debt");
+
+    document.getElementById("statTotal").textContent = data.length;
+    document.getElementById("statIntraday").textContent = intraday;
+    document.getElementById("statEquity").textContent = equity.length;
+    document.getElementById("statDebt").textContent = debt.length;
+
+    // Remove loading class from stat cards
+    document.querySelectorAll(".stat-card").forEach(card => card.classList.remove("loading"));
+
+    // Segment breakdown
+    const segments = {};
+    data.forEach(s => {
+      const seg = s.Segment || "Other";
+      segments[seg] = (segments[seg] || 0) + 1;
+    });
+
+    const segmentHTML = Object.entries(segments)
+      .map(([seg, count]) => {
+        const barWidth = (count / Math.max(...Object.values(segments))) * 100;
+        return `
+          <div class="bar-row">
+            <div class="bar-label">${seg}</div>
+            <div class="bar-track"><div class="bar-fill" style="width: ${barWidth}%"></div></div>
+            <div class="bar-value">${count}</div>
+          </div>
+        `;
+      })
+      .join("");
+    document.getElementById("segmentChart").innerHTML = segmentHTML;
+
+    // Recent table (first 10)
+    document.getElementById("recentBody").innerHTML = data.slice(0, 10).map(s => `
+      <tr>
+        <td><span class="symbol-tag">${s.Symbol}</span></td>
+        <td class="name-cell">${s.SecurityName}</td>
+        <td>${s.Segment}</td>
+        <td class="num">${s.LTP || "—"}</td>
+      </tr>
+    `).join("");
+
+  } catch(e) {
+    console.error(e);
+    document.getElementById("statsGrid").innerHTML = `<div class="error-state" style="grid-column: 1/-1;">Error loading data: ${e}</div>`;
+  }
+})();
+</script>
+{% endblock %}
